@@ -18,48 +18,53 @@ export const missingLockTimeout: Rule = {
   check(statements: ParsedStatement[], _context: RuleContext): RuleViolation[] {
     const violations: RuleViolation[] = [];
 
-    // Check if any statement sets lock_timeout or statement_timeout
-    const hasLockTimeout = statements.some((s) =>
-      sqlMatches(s.raw, /SET\s+(LOCAL\s+)?lock_timeout/i)
-    );
-    const hasStatementTimeout = statements.some((s) =>
-      sqlMatches(s.raw, /SET\s+(LOCAL\s+)?statement_timeout/i)
-    );
-
-    if (hasLockTimeout || hasStatementTimeout) {
-      return violations;
-    }
-
-    // Check if there are any risky operations that would benefit from a timeout
+    // Risky DDL patterns that acquire locks
     const riskyPatterns = [
       /CREATE\s+INDEX\b/i,
       /ALTER\s+TABLE\b/i,
       /DROP\s+INDEX\b/i,
     ];
 
-    const hasRiskyOp = statements.some((s) =>
-      riskyPatterns.some((p) => sqlMatches(s.raw, p))
-    );
+    // Timeout SET patterns
+    const lockTimeoutPattern = /SET\s+(LOCAL\s+)?lock_timeout/i;
+    const statementTimeoutPattern = /SET\s+(LOCAL\s+)?statement_timeout/i;
 
-    if (hasRiskyOp) {
-      violations.push({
-        ruleId: 'MG009',
-        ruleName: 'missing-lock-timeout',
-        severity: 'warning',
-        message:
-          'This migration contains DDL operations that acquire locks but does not set a ' +
-          'lock_timeout. Without a lock_timeout, if another transaction holds a conflicting ' +
-          'lock, your migration will wait indefinitely — and all subsequent queries will ' +
-          'queue behind it, potentially causing a cascading outage (lock queue death spiral).',
-        line: 1,
-        sql: _context.fullSql.substring(0, 200) + '...',
-        suggestion:
-          'Add a lock timeout at the beginning of your migration:\n' +
-          '  SET lock_timeout = \'5s\';\n\n' +
-          'This causes the migration to fail fast if it cannot acquire the lock within 5 seconds, ' +
-          'rather than waiting indefinitely and blocking other queries. You can retry the migration ' +
-          'during a quieter period.',
-      });
+    let hasSeenTimeout = false;
+    let hasFlagged = false;
+
+    for (const s of statements) {
+      // Check if this statement sets a timeout
+      if (
+        sqlMatches(s.raw, lockTimeoutPattern) ||
+        sqlMatches(s.raw, statementTimeoutPattern)
+      ) {
+        hasSeenTimeout = true;
+        continue;
+      }
+
+      // Check if this is a risky operation and we haven't seen a timeout yet
+      const isRisky = riskyPatterns.some((p) => sqlMatches(s.raw, p));
+      if (isRisky && !hasSeenTimeout && !hasFlagged) {
+        violations.push({
+          ruleId: 'MG009',
+          ruleName: 'missing-lock-timeout',
+          severity: 'warning',
+          message:
+            'This migration contains DDL operations that acquire locks but does not set a ' +
+            'lock_timeout before the first risky statement. Without a lock_timeout, if another transaction holds a conflicting ' +
+            'lock, your migration will wait indefinitely — and all subsequent queries will ' +
+            'queue behind it, potentially causing a cascading outage (lock queue death spiral).',
+          line: 1,
+          sql: _context.fullSql.substring(0, 200) + '...',
+          suggestion:
+            'Add a lock timeout at the beginning of your migration:\n' +
+            '  SET lock_timeout = \'5s\';\n\n' +
+            'This causes the migration to fail fast if it cannot acquire the lock within 5 seconds, ' +
+            'rather than waiting indefinitely and blocking other queries. You can retry the migration ' +
+            'during a quieter period.',
+        });
+        hasFlagged = true;
+      }
     }
 
     return violations;

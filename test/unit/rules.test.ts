@@ -203,6 +203,14 @@ describe('MG009: missing-lock-timeout', () => {
     expect(violations.length).toBe(0);
   });
 
+  it('should flag when lock_timeout is set after risky DDL', async () => {
+    const sql = "ALTER TABLE users ADD COLUMN age INT;\nSET lock_timeout = '5s';";
+    const stmts = await parseSql(sql);
+    const violations = missingLockTimeout.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].ruleId).toBe('MG009');
+  });
+
   it('should NOT flag non-risky operations', async () => {
     const sql = "SELECT 1;";
     const stmts = await parseSql(sql);
