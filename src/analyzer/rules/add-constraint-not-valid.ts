@@ -20,8 +20,10 @@ export const addConstraintNotValid: Rule = {
     const violations: RuleViolation[] = [];
 
     for (const stmt of statements) {
-      // Check for ADD CONSTRAINT ... CHECK or FOREIGN KEY without NOT VALID
-      const hasAddConstraint = sqlMatches(stmt.raw, /ADD\s+CONSTRAINT\b/i);
+      // Check for ADD [CONSTRAINT] ... CHECK or FOREIGN KEY without NOT VALID
+      const hasAddConstraint =
+        sqlMatches(stmt.raw, /\bADD\s+CONSTRAINT\b/i) ||
+        sqlMatches(stmt.raw, /\bADD\s+(?:CHECK\s*\(|FOREIGN\s+KEY\b)/i);
       const hasCheckOrFK =
         sqlMatches(stmt.raw, /\bCHECK\s*\(/i) ||
         sqlMatches(stmt.raw, /\bFOREIGN\s+KEY\b/i);

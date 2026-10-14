@@ -111,6 +111,51 @@ describe('MG004: add-constraint-not-valid', () => {
     const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
     expect(violations.length).toBe(0);
   });
+
+  it('should flag unnamed ADD CHECK without NOT VALID', async () => {
+    const sql = 'ALTER TABLE items ADD CHECK (price > 0);';
+    const stmts = await parseSql(sql);
+    const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].ruleId).toBe('MG004');
+  });
+
+  it('should NOT flag unnamed ADD CHECK NOT VALID', async () => {
+    const sql = 'ALTER TABLE items ADD CHECK (price > 0) NOT VALID;';
+    const stmts = await parseSql(sql);
+    const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBe(0);
+  });
+
+  it('should flag unnamed ADD FOREIGN KEY without NOT VALID', async () => {
+    const sql = 'ALTER TABLE orders ADD FOREIGN KEY (user_id) REFERENCES users(id);';
+    const stmts = await parseSql(sql);
+    const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].ruleId).toBe('MG004');
+  });
+
+  it('should NOT flag unnamed ADD FOREIGN KEY NOT VALID', async () => {
+    const sql = 'ALTER TABLE orders ADD FOREIGN KEY (user_id) REFERENCES users(id) NOT VALID;';
+    const stmts = await parseSql(sql);
+    const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBe(0);
+  });
+
+  it('should flag ADD CONSTRAINT FOREIGN KEY without NOT VALID', async () => {
+    const sql = 'ALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id);';
+    const stmts = await parseSql(sql);
+    const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].ruleId).toBe('MG004');
+  });
+
+  it('should NOT flag ADD CONSTRAINT FOREIGN KEY NOT VALID', async () => {
+    const sql = 'ALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) NOT VALID;';
+    const stmts = await parseSql(sql);
+    const violations = addConstraintNotValid.check(stmts, { ...defaultContext, fullSql: sql });
+    expect(violations.length).toBe(0);
+  });
 });
 
 // ─── MG005: DROP COLUMN ─────────────────────────────────────────────
