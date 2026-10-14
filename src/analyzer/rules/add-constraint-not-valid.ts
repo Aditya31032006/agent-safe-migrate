@@ -2,13 +2,15 @@ import type { Rule, ParsedStatement, RuleViolation, RuleContext } from './types.
 import { sqlMatches } from './types.js';
 
 /**
- * MG004: ADD CONSTRAINT without NOT VALID
+ * MG004: ADD CONSTRAINT (named or unnamed) without NOT VALID
  *
  * Adding a CHECK or FOREIGN KEY constraint without NOT VALID requires
  * PostgreSQL to validate all existing rows immediately, holding an
- * ACCESS EXCLUSIVE lock for the duration. The safe pattern is to add
- * the constraint as NOT VALID first, then VALIDATE CONSTRAINT separately
- * (which only takes a SHARE UPDATE EXCLUSIVE lock).
+ * ACCESS EXCLUSIVE lock for the duration. This applies to both
+ * named (ADD CONSTRAINT name ...) and unnamed (ADD FOREIGN KEY / ADD CHECK)
+ * forms. The safe pattern is to add the constraint as NOT VALID first,
+ * then VALIDATE CONSTRAINT separately (which only takes a SHARE UPDATE
+ * EXCLUSIVE lock).
  */
 export const addConstraintNotValid: Rule = {
   id: 'MG004',
@@ -20,14 +22,18 @@ export const addConstraintNotValid: Rule = {
     const violations: RuleViolation[] = [];
 
     for (const stmt of statements) {
-      // Check for ADD CONSTRAINT ... CHECK or FOREIGN KEY without NOT VALID
+      // Check for ADD CONSTRAINT or unnamed ADD CHECK/FOREIGN KEY without NOT VALID
+      // Unnamed constraints (ADD FOREIGN KEY / ADD CHECK) also trigger full validation
       const hasAddConstraint = sqlMatches(stmt.raw, /ADD\s+CONSTRAINT\b/i);
+      const hasUnnamedAdd =
+        sqlMatches(stmt.raw, /\bADD\s+FOREIGN\s+KEY\b/i) ||
+        sqlMatches(stmt.raw, /\bADD\s+CHECK\s*\(/i);
       const hasCheckOrFK =
         sqlMatches(stmt.raw, /\bCHECK\s*\(/i) ||
         sqlMatches(stmt.raw, /\bFOREIGN\s+KEY\b/i);
       const hasNotValid = sqlMatches(stmt.raw, /\bNOT\s+VALID\b/i);
 
-      if (hasAddConstraint && hasCheckOrFK && !hasNotValid) {
+      if ((hasAddConstraint || hasUnnamedAdd) && hasCheckOrFK && !hasNotValid) {
         violations.push({
           ruleId: 'MG004',
           ruleName: 'add-constraint-not-valid',
